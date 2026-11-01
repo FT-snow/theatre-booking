@@ -1,17 +1,246 @@
-REEL ROOM — THEATRE BOOKING
+REEL ROOM - THEATRE BOOKING
+PROJECT, JAVA CODE, DATABASE, AND SYSTEM GUIDE
 
-WHAT THIS PROJECT DOES
-Reel Room is a small Java theatre-seat booking app. The built-in Java HTTP server serves the web page and booking API. MySQL stores accounts and reservations so a restart does not clear booked seats.
+1. PROJECT SUMMARY
 
-SIGN-IN
-Users can sign in or create an account from the landing page. Passwords are stored as salted PBKDF2 hashes; the browser receives an HTTP-only session cookie. The theatre app has its own account tables. The local demo usernames provisioned for this app are prakhar and karan. Only password hashes are stored in the local database; no password is included in this public repository.
+Reel Room is a Java theatre-seat booking website. A visitor first sees a minimal sign-in or account-creation page. After signing in, they can choose one of three films, choose an available seat, and save the booking to MySQL.
 
-SHARED SEATS
-All signed-in accounts read the same theatre_bookings table. A seat has one unique movie-and-seat key, so once one account books it, it appears as taken for every other account. Existing bookings remain visible after sign-in changes and server restarts.
+The Java server serves both the website and its API. MySQL stores accounts, sessions, and reservations. Because seat availability is read from the shared theatre_bookings table instead of being kept only in browser memory, all accounts see the same booked seats. Bookings remain after the Java server restarts.
 
-RUN LOCALLY
-1. Install Java 11 or newer and have MySQL running.
-2. From this folder, run ./run.sh. The script prompts privately for the MySQL password if DB_PASSWORD is not already set.
-3. The app creates the booking_app database tables on startup and serves Reel Room at http://localhost:8080.
+Local demo accounts in the configured database:
+- prakhar
+- karan
 
-DB_USER and DB_URL can be set in the environment to use a different MySQL account or database. Do not commit database passwords or session credentials.
+The password is not written in this repository. The database stores a salted password hash, not the original password.
+
+
+2. BASIC TECH STACK
+
+Backend: Java 11 or newer, using the built-in JDK HTTP server.
+Build and launch: Maven, Maven Wrapper, and run.sh.
+Database: MySQL, accessed with JDBC and MySQL Connector/J.
+Frontend: plain HTML, CSS, and browser JavaScript in index.html.
+Web fonts: DM Sans, DM Mono, and Fraunces, loaded from Google Fonts.
+Server port: 8080.
+Database: booking_app. Theatre tables use the theatre_ prefix.
+
+There is no Spring, React, ORM, separate Node server, or external authentication service in this project. The Java server is the backend and the frontend is a static HTML page served by that same server.
+
+Build versions: Maven Wrapper 3.3.2 downloads Maven 3.9.9. pom.xml uses Maven Compiler Plugin 3.13.0 and Exec Maven Plugin 3.5.0. The compiler targets Java 11 and enables jdk.httpserver.
+
+
+3. JAVA PACKAGES AND LIBRARIES
+
+There is no package declaration at the top of the Java source files. For this small project, its Java classes are in the default package. The import statements bring in the following JDK packages:
+
+com.sun.net.httpserver
+HttpServer listens for browser requests. HttpExchange represents one request and its response. This is part of the JDK module jdk.httpserver, which Maven enables in pom.xml.
+
+java.io
+IOException represents file and network input/output errors.
+
+java.net
+InetSocketAddress binds the server to a port. URLDecoder decodes form values sent by the browser.
+
+java.nio.charset and java.nio.file
+StandardCharsets makes text encoding explicit. Files and Path read index.html from the project folder.
+
+java.sql
+Connection, DriverManager, PreparedStatement, ResultSet, SQLException, and Statement provide JDBC access to MySQL. Prepared statements pass values separately from SQL, which avoids treating user input as SQL code.
+
+java.util and java.util.concurrent
+Map and HashMap store decoded form fields. Base64 encodes salts and tokens. Locale normalizes usernames. Pattern checks username rules. Executors creates the server's worker thread pool.
+
+java.security and javax.crypto
+SecureRandom generates password salts and session tokens. MessageDigest calculates SHA-256 hashes and compares password hashes safely. SecretKeyFactory and PBEKeySpec implement PBKDF2 password hashing.
+
+java.time
+Instant, ChronoUnit, and Timestamp set and check the seven-day session expiry.
+
+External Java library
+MySQL Connector/J, declared in pom.xml as com.mysql:mysql-connector-j 9.2.0, implements the JDBC connection to MySQL. No Java JSON library is used; the small API responses are assembled as JSON strings in the Java code.
+
+
+4. FILES IN THIS PROJECT
+
+MovieBooking.java
+Starts the HTTP server, routes API requests, defines the movie booking system, reads and writes seat reservations, and provides the Database connection helper.
+
+AccountAuth.java
+Creates accounts and session tables; validates registration and login; hashes passwords and session tokens; reads, creates, and deletes login sessions.
+
+index.html
+Contains the landing/sign-in screen, booking page markup, all page styling, and browser JavaScript that calls the API.
+
+pom.xml
+Lists the MySQL driver and configures Java 11 compilation and the MovieBooking launch class.
+
+.mvn/ and mvnw
+The Maven Wrapper downloads and runs the configured Maven version, so a separate system Maven install is not required.
+
+run.sh
+Sets up Java/Maven environment defaults, asks for the MySQL password without displaying it when needed, and launches the application.
+
+project explained.txt
+This guide.
+
+
+5. JAVA CODE WALKTHROUGH
+
+MovieBooking.java - web server and request controller
+
+MovieBooking is the Java entry point. main() first calls BookingSystem.initialize() and AccountAuth.initialize() so the MySQL tables exist before requests arrive. It then starts HttpServer on port 8080 and assigns incoming requests to a fixed pool of eight worker threads.
+
+handleRequest() checks the URL path and HTTP method. GET / reads index.html and returns it to the browser. Register, login, session, and logout paths go to the account code. Movie, seat, and booking API paths require a valid session. If there is no session, the server returns HTTP 401. SQL failures are caught and returned as an HTTP 500 response.
+
+authenticate() reads the browser's URL-encoded username and password. It calls AccountAuth.register() or AccountAuth.login(), then places the returned session token in an HTTP-only cookie. sendSession() checks that cookie and tells the page whether a user is signed in.
+
+sendMovies() loops over the movies in BookingSystem and returns their IDs, names, show times, and current available-seat counts as JSON. sendSeats() reads movieId from the query string, finds that movie, and returns the current seat map from MySQL.
+
+bookSeat() reads movieId, seat, and passenger/customer name from the request. The request is accepted only after handleRequest() has verified the session. The authenticated account ID is passed into Movie.bookSeat() and stored with the booking. Invalid input returns HTTP 400. A seat that another request already claimed returns HTTP 409.
+
+getSeatNumber() converts a visible theatre label such as A1 or C4 into a zero-based database index. The theatre has five rows of eight seats: A1 is index 0 and E8 is index 39. readNumber() safely parses numeric form values. readForm() splits and URL-decodes form data into a Map. sendJson() and send() set response content type, disable caching, write the response, and close the exchange.
+
+BookingSystem
+
+BookingSystem owns the three movie definitions: After the Rain, The Last Ticket, and Orbit, Somewhere. initialize() creates theatre_movies and theatre_bookings when missing and inserts the default movie rows if they are not already present. It also adds account_id to an older theatre_bookings table if that column is missing. getMovies() returns the in-memory movie list; getMovie(id) finds one movie by ID.
+
+Movie
+
+Movie stores one film's ID, title, show time, and seat capacity. bookSeat() checks the seat index, then inserts a row into MySQL. A database primary key on movie_id plus seat_index rejects duplicate reservations, including races between different server threads. The synchronized keyword also prevents two threads in this Java process from executing the same Movie method at once.
+
+getAvailableSeats() counts all booking rows for that movie and subtracts that count from the capacity. getSeatsJson() reads all saved seat indexes and turns them into a JSON array with a booked true/false value. These queries do not filter by account_id. That is why every signed-in account sees the same availability.
+
+Database
+
+Database.getConnection() reads DB_URL, DB_USER, and DB_PASSWORD from environment variables. If DB_URL is missing, it uses jdbc:mysql://localhost:3306/booking_app?createDatabaseIfNotExist=true&serverTimezone=UTC. DB_USER defaults to root. DB_PASSWORD is required and is never written into the Java source. run.sh prompts for it invisibly if it was not already provided.
+
+
+AccountAuth.java - accounts and login sessions
+
+AccountAuth.initialize() creates theatre_accounts and theatre_sessions. Account table names are passed into AccountAuth by MovieBooking, which keeps this app's accounts separate from the flight app's accounts even though both apps use booking_app.
+
+register() accepts usernames containing 3-30 letters, digits, dots, dashes, or underscores. It lowercases the username, requires an 8-128 character password, generates a random salt, and derives a 256-bit PBKDF2WithHmacSHA256 password hash with 120,000 iterations. It inserts the account and its first session in one database transaction. A duplicate username returns HTTP 409.
+
+login() finds the account by normalized username, recomputes the password hash using the account's saved salt, and compares the hashes with MessageDigest.isEqual(). Incorrect credentials do not create a session.
+
+createLogin() generates a random 32-byte session token. The browser receives the token in a cookie, but MySQL stores only its SHA-256 hash. The session expires after seven days. currentUser() reads the cookie, hashes the token, and looks up a matching unexpired session and account.
+
+setLoginCookie() creates an HttpOnly, SameSite=Lax cookie. It also sets Secure when the request arrives through an HTTPS proxy. logout() deletes the matching database session and expires the browser cookie. User, Login, and AuthException are small helper classes for the authenticated account, a successful sign-in, and a user-facing authentication error.
+
+The supporting methods each have one job. normalizeUsername() trims, validates, and lowercases a username. validatePassword() enforces the password length. hashPassword() runs PBKDF2 using the saved salt. sha256() hashes session tokens before they go into MySQL. readCookie() accepts only a token with the expected format. cookieHeader() assembles the browser cookie flags and expiry attributes.
+
+
+6. DATABASE TABLES
+
+All four theatre tables are inside the booking_app MySQL database:
+
+theatre_movies
+One row per film: id, title, show_time, total_seats. The default list is defined in Java and inserted into this table at startup if absent.
+
+theatre_bookings
+One row per reserved seat: movie_id, seat_index, customer_name, account_id, booked_at. The primary key is (movie_id, seat_index), so two accounts cannot book the same seat. account_id records which account placed a new booking. Older bookings may have account_id set to NULL after the schema migration; they still count as booked.
+
+theatre_accounts
+One row per account: numeric id, unique username, password_salt, password_hash, and creation time. Password text is not stored.
+
+theatre_sessions
+One row per active login: SHA-256 token_hash, account_id, expiry, and creation time. The foreign key links each session to an account.
+
+
+7. HTTP API
+
+GET /
+Returns index.html. This is the landing page and the booking interface in one file.
+
+POST /api/register
+Creates an account, signs it in, and returns a session cookie.
+
+POST /api/login
+Checks credentials and returns a session cookie.
+
+GET /api/session
+Checks the current cookie and returns the signed-in username, or authenticated=false.
+
+POST /api/logout
+Deletes the current session and expires the cookie.
+
+GET /api/movies
+Requires login. Returns movies and remaining seat counts.
+
+GET /api/seats?movieId=1
+Requires login. Returns the shared live seat map for that movie.
+
+POST /api/book
+Requires login. Saves a movie ID, seat label, customer name, and authenticated account ID.
+
+
+8. WHAT CONNECTS TO WHAT
+
+1. The browser requests http://localhost:8080/.
+2. MovieBooking reads index.html and sends it to the browser.
+3. Browser JavaScript calls /api/session. For a signed-in user, the browser automatically sends its session cookie.
+4. AccountAuth hashes the cookie token and checks theatre_sessions and theatre_accounts in MySQL.
+5. After login, the page requests /api/movies and /api/seats. MovieBooking asks BookingSystem and Movie for the data; Movie reads booking rows with JDBC.
+6. When the user books, the browser sends a POST to /api/book. Java validates the session and request, then Movie inserts the reservation into theatre_bookings.
+7. The page reloads the seat map. A second account makes the same database query and receives the same booked-seat results.
+
+Short architecture view:
+
+Browser (HTML/CSS/JavaScript)
+    | HTTP page requests and API calls; session cookie
+    v
+Java HttpServer (MovieBooking and AccountAuth)
+    | JDBC queries and prepared statements
+    v
+MySQL booking_app database
+    | theatre_movies, theatre_bookings, theatre_accounts, theatre_sessions
+
+
+9. FRONTEND
+
+index.html contains both screens. The first screen provides sign-in and account creation. After authentication, JavaScript hides the landing section and displays the booking section. The top bar shows the active username and a sign-out button.
+
+The booking interface lists films on the left and draws the 5-by-8 seat map on the right. Available, selected, and taken seats have separate styles. The page uses JavaScript fetch() calls to the same Java server; no separate frontend server or JavaScript package manager is needed. CSS media queries adapt the layout for narrow screens. Form labels, button types, and aria-live status messages support keyboard and assistive-technology use.
+
+The typography is DM Sans for general text, DM Mono for compact labels and seat codes, and Fraunces for film headings. Google Fonts provides the font files when the browser has an internet connection; fallback fonts are included in CSS.
+
+
+10. JAVA AND WEB CONCEPTS USED
+
+Classes and objects: Movie, BookingSystem, AccountAuth, and helper classes keep related state and behavior together.
+Encapsulation: fields are private; callers use methods instead of changing them directly.
+Arrays and loops: the movie list and seat map are represented as arrays and processed with loops.
+HTTP server and routing: Java receives requests, checks paths and methods, then returns HTML or JSON.
+Concurrency: a fixed thread pool serves multiple requests; synchronized protects individual Movie operations.
+Database persistence: JDBC statements read and write MySQL rows rather than keeping bookings only in memory.
+Relational keys: movie foreign keys and the movie/seat primary key maintain valid, unique bookings.
+Prepared statements: form values are bound as parameters instead of concatenated into SQL.
+Authentication: registration, password verification, expiring sessions, cookies, and logout.
+Password hashing: each password has a random salt and PBKDF2 work factor; plaintext passwords are not stored.
+Exception handling: invalid inputs and SQL problems become appropriate HTTP error responses.
+Frontend events: JavaScript handles form submissions, account-mode tabs, sign-out, film selection, and seat clicks.
+Responsive web design: CSS grid, flexible widths, and media queries adapt the screens to smaller devices.
+
+
+11. RUNNING AND CONFIGURATION
+
+Requirements: Java 11 or newer and a running MySQL server. From this project folder:
+
+    ./run.sh
+
+The script prompts for the MySQL password without echoing it. It starts the Maven Wrapper and runs MovieBooking. Open http://localhost:8080.
+
+Optional environment variables:
+DB_USER changes the MySQL username; default is root.
+DB_PASSWORD supplies the MySQL password without an interactive prompt.
+DB_URL changes the JDBC URL/database; default points to booking_app on localhost:3306.
+
+Do not commit database passwords, application passwords, session tokens, or .env files. The repository's .gitignore excludes .env and Maven build output.
+
+
+12. SOURCE FORMATTING AND SCOPE
+
+The Java source uses four-space indentation, one class per clear responsibility where practical, descriptive method names, and try-with-resources for database objects. MovieBooking.java keeps the small theatre domain classes beside the server entry point; authentication is separated into AccountAuth.java. This is a deliberately small teaching project rather than a multi-module framework application.
+
+The code demonstrates the full request-to-database path, but it is a classroom/demo system. It does not include email verification, password recovery, account administration, rate limiting, or a production connection pool.
