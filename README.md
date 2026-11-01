@@ -4,13 +4,10 @@ A small Java theatre-seat booking app with a plain HTML/CSS/JavaScript frontend 
 
 ## Run it
 
-Use Java 11+, Maven, and MySQL. From this folder, set the database credentials in your terminal and start the app:
+Use Java 11+ and MySQL. From this folder, start the app; it securely prompts for the MySQL password if `DB_PASSWORD` is not already set:
 
 ```bash
-export DB_USER=root
-read -s -p "MySQL password: " DB_PASSWORD
-export DB_PASSWORD
-mvn compile exec:java
+./run.sh
 ```
 
 The app creates the `booking_app` database and its theatre tables on first run. Open <http://localhost:8080>.
