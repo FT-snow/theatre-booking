@@ -6,6 +6,12 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -13,35 +19,39 @@ import java.util.concurrent.Executors;
 public class MovieBooking {
     private static BookingSystem bookingSystem = new BookingSystem();
 
-    public static void main(String[] args) throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+    public static void main(String[] args) throws IOException, SQLException {
+        bookingSystem.initialize();
 
-        // Requests are handled by worker threads. Movie.bookSeat is synchronized.
+        HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
         server.setExecutor(Executors.newFixedThreadPool(8));
         server.createContext("/", MovieBooking::handleRequest);
         server.start();
 
-        System.out.println("Movie booking is running at http://localhost:8080");
+        System.out.println("Theatre booking is running at http://localhost:8080");
     }
 
     private static void handleRequest(HttpExchange exchange) throws IOException {
-        String path = exchange.getRequestURI().getPath();
+        try {
+            String path = exchange.getRequestURI().getPath();
 
-        if (path.equals("/") && exchange.getRequestMethod().equals("GET")) {
-            String page = Files.readString(Path.of("index.html"));
-            send(exchange, 200, "text/html; charset=UTF-8", page);
-        } else if (path.equals("/api/movies") && exchange.getRequestMethod().equals("GET")) {
-            sendMovies(exchange);
-        } else if (path.equals("/api/seats") && exchange.getRequestMethod().equals("GET")) {
-            sendSeats(exchange);
-        } else if (path.equals("/api/book") && exchange.getRequestMethod().equals("POST")) {
-            bookSeat(exchange);
-        } else {
-            sendJson(exchange, 404, "{\"message\":\"Page not found\"}");
+            if (path.equals("/") && exchange.getRequestMethod().equals("GET")) {
+                send(exchange, 200, "text/html; charset=UTF-8", Files.readString(Path.of("index.html")));
+            } else if (path.equals("/api/movies") && exchange.getRequestMethod().equals("GET")) {
+                sendMovies(exchange);
+            } else if (path.equals("/api/seats") && exchange.getRequestMethod().equals("GET")) {
+                sendSeats(exchange);
+            } else if (path.equals("/api/book") && exchange.getRequestMethod().equals("POST")) {
+                bookSeat(exchange);
+            } else {
+                sendJson(exchange, 404, "{\"message\":\"Page not found\"}");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            sendJson(exchange, 500, "{\"message\":\"Database error. Check the MySQL settings.\"}");
         }
     }
 
-    private static void sendMovies(HttpExchange exchange) throws IOException {
+    private static void sendMovies(HttpExchange exchange) throws IOException, SQLException {
         Movie[] movies = bookingSystem.getMovies();
         String json = "[";
 
@@ -61,7 +71,7 @@ public class MovieBooking {
         sendJson(exchange, 200, json);
     }
 
-    private static void sendSeats(HttpExchange exchange) throws IOException {
+    private static void sendSeats(HttpExchange exchange) throws IOException, SQLException {
         Map<String, String> query = readForm(exchange.getRequestURI().getRawQuery());
         int movieId = readNumber(query.get("movieId"));
         Movie movie = bookingSystem.getMovie(movieId);
@@ -74,22 +84,21 @@ public class MovieBooking {
         sendJson(exchange, 200, movie.getSeatsJson());
     }
 
-    private static void bookSeat(HttpExchange exchange) throws IOException {
+    private static void bookSeat(HttpExchange exchange) throws IOException, SQLException {
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         Map<String, String> form = readForm(body);
 
         int movieId = readNumber(form.get("movieId"));
-        int seatNumber = getSeatNumber(form.get("seat"));
+        int seatIndex = getSeatNumber(form.get("seat"));
         String customerName = form.get("name");
         Movie movie = bookingSystem.getMovie(movieId);
 
-        if (movie == null || seatNumber == -1 || customerName == null || customerName.trim().isEmpty()) {
+        if (movie == null || seatIndex == -1 || customerName == null || customerName.trim().isEmpty()) {
             sendJson(exchange, 400, "{\"message\":\"Enter your name and choose a valid seat\"}");
             return;
         }
 
-        // This synchronized method checks and books the seat as one operation.
-        if (movie.bookSeat(seatNumber, customerName.trim())) {
+        if (movie.bookSeat(seatIndex, customerName.trim())) {
             sendJson(exchange, 200, "{\"message\":\"Seat " + form.get("seat") + " is booked. Enjoy the movie!\"}");
         } else {
             sendJson(exchange, 409, "{\"message\":\"Sorry, that seat was just booked by someone else\"}");
@@ -122,7 +131,6 @@ public class MovieBooking {
 
     private static Map<String, String> readForm(String text) {
         Map<String, String> values = new HashMap<>();
-
         if (text == null || text.isEmpty()) {
             return values;
         }
@@ -156,10 +164,35 @@ public class MovieBooking {
 
 class BookingSystem {
     private Movie[] movies = {
-        new Movie(1, "After the Rain", "6:15 PM"),
-        new Movie(2, "The Last Ticket", "8:30 PM"),
-        new Movie(3, "Orbit, Somewhere", "10:00 PM")
+        new Movie(1, "After the Rain", "6:15 PM", 40),
+        new Movie(2, "The Last Ticket", "8:30 PM", 40),
+        new Movie(3, "Orbit, Somewhere", "10:00 PM", 40)
     };
+
+    void initialize() throws SQLException {
+        try (Connection connection = Database.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.executeUpdate("CREATE TABLE IF NOT EXISTS theatre_movies ("
+                    + "id INT PRIMARY KEY, title VARCHAR(100) NOT NULL, "
+                    + "show_time VARCHAR(30) NOT NULL, total_seats INT NOT NULL)");
+
+            try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT IGNORE INTO theatre_movies (id, title, show_time, total_seats) VALUES (?, ?, ?, ?)")) {
+                for (Movie movie : movies) {
+                    insert.setInt(1, movie.getId());
+                    insert.setString(2, movie.getTitle());
+                    insert.setString(3, movie.getTime());
+                    insert.setInt(4, movie.getTotalSeats());
+                    insert.executeUpdate();
+                }
+            }
+
+            statement.executeUpdate("CREATE TABLE IF NOT EXISTS theatre_bookings ("
+                    + "movie_id INT NOT NULL, seat_index INT NOT NULL, customer_name VARCHAR(100) NOT NULL, "
+                    + "booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (movie_id, seat_index), "
+                    + "FOREIGN KEY (movie_id) REFERENCES theatre_movies(id))");
+        }
+    }
 
     Movie[] getMovies() {
         return movies;
@@ -179,60 +212,99 @@ class Movie {
     private int id;
     private String title;
     private String time;
-    private String[] bookedBy = new String[40];
+    private int totalSeats;
 
-    Movie(int id, String title, String time) {
+    Movie(int id, String title, String time, int totalSeats) {
         this.id = id;
         this.title = title;
         this.time = time;
+        this.totalSeats = totalSeats;
     }
 
-    int getId() {
-        return id;
-    }
+    int getId() { return id; }
+    String getTitle() { return title; }
+    String getTime() { return time; }
+    int getTotalSeats() { return totalSeats; }
 
-    String getTitle() {
-        return title;
-    }
-
-    String getTime() {
-        return time;
-    }
-
-    synchronized boolean bookSeat(int seatNumber, String customerName) {
-        if (seatNumber < 0 || seatNumber >= bookedBy.length || bookedBy[seatNumber] != null) {
+    synchronized boolean bookSeat(int seatIndex, String customerName) throws SQLException {
+        if (seatIndex < 0 || seatIndex >= totalSeats) {
             return false;
         }
 
-        bookedBy[seatNumber] = customerName;
-        return true;
+        try (Connection connection = Database.getConnection();
+             PreparedStatement insert = connection.prepareStatement(
+                     "INSERT INTO theatre_bookings (movie_id, seat_index, customer_name) VALUES (?, ?, ?)")) {
+            insert.setInt(1, id);
+            insert.setInt(2, seatIndex);
+            insert.setString(3, customerName);
+            insert.executeUpdate();
+            return true;
+        } catch (SQLException e) {
+            if (e.getErrorCode() == 1062) {
+                return false;
+            }
+            throw e;
+        }
     }
 
-    synchronized int getAvailableSeats() {
-        int available = 0;
-        for (String customer : bookedBy) {
-            if (customer == null) {
-                available++;
+    synchronized int getAvailableSeats() throws SQLException {
+        try (Connection connection = Database.getConnection();
+             PreparedStatement query = connection.prepareStatement(
+                     "SELECT COUNT(*) FROM theatre_bookings WHERE movie_id = ?")) {
+            query.setInt(1, id);
+            try (ResultSet result = query.executeQuery()) {
+                result.next();
+                return totalSeats - result.getInt(1);
             }
         }
-        return available;
     }
 
-    synchronized String getSeatsJson() {
+    synchronized String getSeatsJson() throws SQLException {
+        boolean[] booked = new boolean[totalSeats];
+
+        try (Connection connection = Database.getConnection();
+             PreparedStatement query = connection.prepareStatement(
+                     "SELECT seat_index FROM theatre_bookings WHERE movie_id = ?")) {
+            query.setInt(1, id);
+            try (ResultSet result = query.executeQuery()) {
+                while (result.next()) {
+                    int seatIndex = result.getInt("seat_index");
+                    if (seatIndex >= 0 && seatIndex < totalSeats) {
+                        booked[seatIndex] = true;
+                    }
+                }
+            }
+        }
+
         String json = "{\"seats\":[";
-
-        for (int i = 0; i < bookedBy.length; i++) {
+        for (int i = 0; i < totalSeats; i++) {
             char row = (char) ('A' + i / 8);
-            int seatInRow = i % 8 + 1;
-            String seatName = "" + row + seatInRow;
-
-            json += "{\"id\":\"" + seatName + "\",\"booked\":" + (bookedBy[i] != null) + "}";
-            if (i < bookedBy.length - 1) {
+            String seatName = "" + row + (i % 8 + 1);
+            json += "{\"id\":\"" + seatName + "\",\"booked\":" + booked[i] + "}";
+            if (i < totalSeats - 1) {
                 json += ",";
             }
         }
+        return json + "]}";
+    }
+}
 
-        json += "]}";
-        return json;
+class Database {
+    static Connection getConnection() throws SQLException {
+        String url = System.getenv("DB_URL");
+        String user = System.getenv("DB_USER");
+        String password = System.getenv("DB_PASSWORD");
+
+        if (url == null || url.isBlank()) {
+            url = "jdbc:mysql://localhost:3306/booking_app?createDatabaseIfNotExist=true&serverTimezone=UTC";
+        }
+        if (user == null || user.isBlank()) {
+            user = "root";
+        }
+        if (password == null) {
+            throw new SQLException("Set the DB_PASSWORD environment variable before starting the app.");
+        }
+
+        return DriverManager.getConnection(url, user, password);
     }
 }
