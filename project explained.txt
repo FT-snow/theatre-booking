@@ -48,14 +48,20 @@ StandardCharsets makes text encoding explicit. Files and Path read index.html fr
 java.sql
 Connection, DriverManager, PreparedStatement, ResultSet, SQLException, and Statement provide JDBC access to MySQL. Prepared statements pass values separately from SQL, which avoids treating user input as SQL code.
 
-java.util and java.util.concurrent
-Map and HashMap store decoded form fields. Base64 encodes salts and tokens. Locale normalizes usernames. Pattern checks username rules. Executors creates the server's worker thread pool.
+java.util
+Map and HashMap store decoded form fields. Base64 encodes salts and tokens. Locale normalizes usernames.
+
+java.util.concurrent
+Executors creates the server's worker thread pool.
+
+java.util.regex
+Pattern checks username rules.
 
 java.security and javax.crypto
 SecureRandom generates password salts and session tokens. MessageDigest calculates SHA-256 hashes and compares password hashes safely. SecretKeyFactory and PBEKeySpec implement PBKDF2 password hashing.
 
-java.time
-Instant, ChronoUnit, and Timestamp set and check the seven-day session expiry.
+java.time, java.time.temporal, and java.time.format
+Instant and ChronoUnit set and check the seven-day session expiry. DateTimeFormatter formats the cookie expiry date, and ZoneOffset supplies UTC. Timestamp, from java.sql, writes the expiry to MySQL.
 
 External Java library
 MySQL Connector/J, declared in pom.xml as com.mysql:mysql-connector-j 9.2.0, implements the JDBC connection to MySQL. No Java JSON library is used; the small API responses are assembled as JSON strings in the Java code.
