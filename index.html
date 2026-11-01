@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reel Room — Movie Booking</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --paper: #f4f0e8;
+            --panel: #fffdf8;
+            --ink: #252722;
+            --muted: #777a70;
+            --line: #dedbd1;
+            --red: #bd4b35;
+            --green: #777d67;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: var(--paper);
+            color: var(--ink);
+            font-family: "DM Sans", sans-serif;
+        }
+
+        button, input { font: inherit; }
+
+        .topbar {
+            height: 66px;
+            padding: 0 7.2%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: .11em;
+        }
+
+        .brand-mark {
+            width: 25px;
+            height: 25px;
+            display: grid;
+            place-items: center;
+            color: var(--panel);
+            background: var(--red);
+            border-radius: 50%;
+            font-family: Georgia, serif;
+            font-size: 16px;
+        }
+
+        .top-note, .eyebrow, .section-label, .small-label, .footer-note {
+            font-family: "DM Mono", monospace;
+            text-transform: uppercase;
+            letter-spacing: .09em;
+        }
+
+        .top-note { color: var(--muted); font-size: 10px; }
+
+        main { width: min(1100px, 86%); margin: 0 auto; }
+
+        .intro {
+            padding: 56px 0 35px;
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 24px;
+        }
+
+        .eyebrow { color: var(--red); font-size: 10px; margin: 0 0 12px; }
+
+        h1 {
+            margin: 0;
+            font-family: "Fraunces", Georgia, serif;
+            font-weight: 500;
+            font-size: clamp(38px, 5vw, 58px);
+            letter-spacing: -.045em;
+            line-height: 1;
+        }
+
+        .intro-copy { max-width: 250px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+
+        .booking-card {
+            display: grid;
+            grid-template-columns: 330px 1fr;
+            min-height: 500px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            box-shadow: 0 16px 40px rgba(54, 45, 27, .045);
+            animation: rise .45s ease-out both;
+        }
+
+        .movie-panel { padding: 29px 24px; border-right: 1px solid var(--line); }
+
+        .section-label { color: var(--muted); font-size: 10px; margin: 0 0 21px; }
+
+        .movie-list { display: grid; gap: 10px; }
+
+        .movie-option {
+            width: 100%;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            gap: 13px;
+            text-align: left;
+            color: var(--ink);
+            background: transparent;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: background .18s, border-color .18s, transform .18s;
+        }
+
+        .movie-option:hover { background: #f8f5ee; transform: translateX(2px); }
+        .movie-option.active { background: #f7f1e7; border-color: #d9cfc0; }
+
+        .poster {
+            position: relative;
+            width: 54px;
+            height: 70px;
+            flex: 0 0 54px;
+            overflow: hidden;
+            display: grid;
+            place-items: center;
+            color: rgba(255, 248, 229, .88);
+            font-family: "Fraunces", Georgia, serif;
+            font-size: 24px;
+        }
+
+        .poster::before, .poster::after { content: ""; position: absolute; border-radius: 50%; }
+        .poster::before { width: 42px; height: 42px; top: -9px; right: -12px; background: rgba(246, 214, 158, .6); }
+        .poster::after { width: 54px; height: 24px; left: -13px; bottom: -4px; background: rgba(24, 35, 29, .42); }
+        .poster span { z-index: 1; }
+        .poster-1 { background: linear-gradient(150deg, #bd563d, #6a423b 67%, #273b35); }
+        .poster-2 { background: linear-gradient(150deg, #899277, #555c4b 57%, #363e3c); }
+        .poster-3 { background: linear-gradient(150deg, #273d54, #596979 60%, #b0784d); }
+        .movie-details { min-width: 0; flex: 1; }
+        .movie-title { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+        .movie-time { color: var(--muted); font-family: "DM Mono", monospace; font-size: 10px; }
+        .movie-available { display: block; margin-top: 6px; color: var(--green); font-size: 10px; }
+
+        .screening-note {
+            margin-top: 29px;
+            padding-top: 17px;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+            font-size: 11px;
+            line-height: 1.6;
+        }
+
+        .seat-panel { padding: 29px clamp(22px, 5vw, 57px) 25px; }
+        .screen-label { margin: 2px auto 16px; width: 75%; text-align: center; color: var(--muted); font: 9px "DM Mono", monospace; letter-spacing: .16em; }
+        .screen {
+            width: 76%;
+            height: 17px;
+            margin: 0 auto 29px;
+            border-top: 2px solid #bbb6a9;
+            border-radius: 50% 50% 0 0;
+            box-shadow: 0 -8px 15px -13px rgba(70, 67, 56, .65);
+        }
+
+        .seat-grid { display: grid; gap: 10px; justify-content: center; }
+        .seat-row { display: flex; align-items: center; gap: 11px; }
+        .row-label { width: 13px; color: #a2a095; font: 10px "DM Mono", monospace; }
+        .seat-buttons { display: grid; grid-template-columns: repeat(8, 31px); gap: 8px; }
+
+        .seat {
+            width: 31px;
+            height: 28px;
+            padding: 0;
+            color: #65695f;
+            background: #efeee7;
+            border: 1px solid #dfded5;
+            border-radius: 8px 8px 4px 4px;
+            font: 9px "DM Mono", monospace;
+            cursor: pointer;
+            transition: transform .15s, color .15s, background .15s;
+        }
+
+        .seat:nth-child(5) { margin-left: 12px; }
+        .seat:not(:disabled):hover { transform: translateY(-3px); border-color: var(--red); }
+        .seat.selected { color: white; background: var(--red); border-color: var(--red); }
+        .seat.taken { color: #f8f5ed; background: #c8c5bc; border-color: #c8c5bc; cursor: not-allowed; }
+
+        .legend { display: flex; justify-content: center; gap: 20px; margin: 23px 0 22px; color: var(--muted); font-size: 10px; }
+        .legend-item { display: flex; align-items: center; gap: 6px; }
+        .legend-dot { width: 10px; height: 10px; border: 1px solid #d4d2c8; border-radius: 3px; background: #efeee7; }
+        .legend-dot.booked { background: #c8c5bc; border-color: #c8c5bc; }
+        .legend-dot.selected { background: var(--red); border-color: var(--red); }
+
+        .booking-form {
+            padding-top: 19px;
+            border-top: 1px solid var(--line);
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: end;
+            gap: 12px;
+        }
+
+        .input-wrap label { display: block; margin-bottom: 7px; color: var(--muted); font: 9px "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+        .input-wrap input { width: 100%; height: 42px; padding: 0 12px; color: var(--ink); background: #fbfaf5; border: 1px solid var(--line); outline: none; }
+        .input-wrap input:focus { border-color: var(--green); }
+
+        .book-button {
+            min-width: 145px;
+            height: 42px;
+            padding: 0 15px;
+            color: white;
+            background: var(--ink);
+            border: 0;
+            cursor: pointer;
+            transition: background .18s, transform .18s;
+        }
+
+        .book-button:hover:not(:disabled) { background: var(--red); transform: translateY(-1px); }
+        .book-button:disabled { opacity: .4; cursor: not-allowed; }
+        .message { min-height: 18px; margin: 10px 0 0; color: var(--green); font-size: 11px; }
+        .message.error { color: var(--red); }
+
+        footer { padding: 22px 0 32px; display: flex; justify-content: space-between; color: var(--muted); }
+        .footer-note { font-size: 9px; }
+
+        @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        @media (max-width: 760px) {
+            .topbar { padding: 0 7%; }
+            main { width: 90%; }
+            .intro { padding-top: 42px; align-items: start; flex-direction: column; gap: 13px; }
+            .intro-copy { max-width: 360px; margin: 0; }
+            .booking-card { grid-template-columns: 1fr; }
+            .movie-panel { border-right: 0; border-bottom: 1px solid var(--line); padding: 24px 20px; }
+            .movie-list { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+            .movie-option { padding: 8px 5px; align-items: start; flex-direction: column; }
+            .poster { width: 100%; height: 67px; flex-basis: auto; }
+            .movie-available { display: none; }
+            .screening-note { display: none; }
+            .seat-panel { padding: 25px 12px; }
+            .seat-buttons { grid-template-columns: repeat(8, minmax(23px, 31px)); gap: 5px; }
+            .seat { width: 100%; }
+            .seat:nth-child(5) { margin-left: 5px; }
+            .seat-row { gap: 7px; }
+        }
+
+        @media (max-width: 420px) {
+            .booking-form { grid-template-columns: 1fr; }
+            .book-button { width: 100%; }
+            .top-note { font-size: 8px; }
+            .footer-note { font-size: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand"><span class="brand-mark">r</span> REEL ROOM</div>
+        <div class="top-note">A small cinema · Tonight</div>
+    </header>
+
+    <main>
+        <section class="intro">
+            <div>
+                <p class="eyebrow">Your evening, well spent</p>
+                <h1>Pick a film.<br>Take a seat.</h1>
+            </div>
+            <p class="intro-copy">Three stories on screen tonight. Choose your film, find your seat, and we’ll save it for you.</p>
+        </section>
+
+        <section class="booking-card">
+            <aside class="movie-panel">
+                <p class="section-label">01 / Choose a film</p>
+                <div class="movie-list" id="movie-list"></div>
+                <div class="screening-note">Doors open 15 minutes before showtime.<br>Every seat is a good seat here.</div>
+            </aside>
+
+            <section class="seat-panel">
+                <p class="section-label">02 / Choose your seat</p>
+                <div class="screen-label">THE SCREEN</div>
+                <div class="screen"></div>
+                <div class="seat-grid" id="seat-grid"></div>
+
+                <div class="legend">
+                    <span class="legend-item"><span class="legend-dot"></span> Available</span>
+                    <span class="legend-item"><span class="legend-dot selected"></span> Your seat</span>
+                    <span class="legend-item"><span class="legend-dot booked"></span> Taken</span>
+                </div>
+
+                <form class="booking-form" id="booking-form">
+                    <div class="input-wrap">
+                        <label for="customer-name">Your name</label>
+                        <input id="customer-name" type="text" placeholder="Name on the booking" maxlength="50" required>
+                    </div>
+                    <button class="book-button" id="book-button" type="submit" disabled>Book a seat</button>
+                </form>
+                <p class="message" id="message" aria-live="polite"></p>
+            </section>
+        </section>
+
+        <footer>
+            <span class="footer-note">Reel Room · Seat reservations</span>
+            <span class="footer-note">One seat, one good story</span>
+        </footer>
+    </main>
+
+    <script>
+        let movies = [];
+        let selectedMovie = null;
+        let selectedSeat = null;
+        let currentSeats = [];
+
+        const movieList = document.getElementById("movie-list");
+        const seatGrid = document.getElementById("seat-grid");
+        const bookButton = document.getElementById("book-button");
+        const message = document.getElementById("message");
+
+        async function loadMovies() {
+            const response = await fetch("/api/movies");
+            movies = await response.json();
+            drawMovies();
+            if (movies.length > 0) {
+                await chooseMovie(movies[0].id);
+            }
+        }
+
+        function drawMovies() {
+            movieList.innerHTML = movies.map((movie, index) => `
+                <button class="movie-option ${selectedMovie === movie.id ? "active" : ""}" data-id="${movie.id}" type="button">
+                    <span class="poster poster-${index + 1}"><span>${index === 0 ? "A" : index === 1 ? "T" : "O"}</span></span>
+                    <span class="movie-details">
+                        <span class="movie-title">${movie.title}</span>
+                        <span class="movie-time">${movie.time}</span>
+                        <span class="movie-available">${movie.available} seats left</span>
+                    </span>
+                </button>
+            `).join("");
+        }
+
+        async function chooseMovie(id) {
+            selectedMovie = id;
+            selectedSeat = null;
+            message.textContent = "";
+            message.classList.remove("error");
+            drawMovies();
+
+            const response = await fetch("/api/seats?movieId=" + id);
+            const data = await response.json();
+            currentSeats = data.seats;
+            drawSeats();
+        }
+
+        function drawSeats() {
+            let rows = "";
+
+            for (let row = 0; row < 5; row++) {
+                const rowName = String.fromCharCode(65 + row);
+                let seatButtons = "";
+
+                for (let column = 0; column < 8; column++) {
+                    const seat = currentSeats[row * 8 + column];
+                    const selected = seat.id === selectedSeat;
+                    seatButtons += `<button class="seat ${seat.booked ? "taken" : ""} ${selected ? "selected" : ""}" data-seat="${seat.id}" type="button" ${seat.booked ? "disabled" : ""} aria-label="Seat ${seat.id}${seat.booked ? ", taken" : ""}">${seat.id}</button>`;
+                }
+
+                rows += `<div class="seat-row"><span class="row-label">${rowName}</span><div class="seat-buttons">${seatButtons}</div></div>`;
+            }
+
+            seatGrid.innerHTML = rows;
+            bookButton.disabled = selectedSeat === null || document.getElementById("customer-name").value.trim() === "";
+        }
+
+        movieList.addEventListener("click", async function (event) {
+            const button = event.target.closest(".movie-option");
+            if (button) {
+                await chooseMovie(Number(button.dataset.id));
+            }
+        });
+
+        seatGrid.addEventListener("click", function (event) {
+            const button = event.target.closest(".seat");
+            if (button && !button.disabled) {
+                selectedSeat = button.dataset.seat;
+                drawSeats();
+            }
+        });
+
+        document.getElementById("customer-name").addEventListener("input", function () {
+            bookButton.disabled = selectedSeat === null || this.value.trim() === "";
+        });
+
+        document.getElementById("booking-form").addEventListener("submit", async function (event) {
+            event.preventDefault();
+            if (selectedSeat === null) return;
+
+            bookButton.disabled = true;
+            message.classList.remove("error");
+
+            const form = new URLSearchParams();
+            form.append("movieId", selectedMovie);
+            form.append("seat", selectedSeat);
+            form.append("name", document.getElementById("customer-name").value.trim());
+
+            const response = await fetch("/api/book", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: form
+            });
+
+            const result = await response.json();
+            message.textContent = result.message;
+
+            if (response.ok) {
+                selectedSeat = null;
+                await chooseMovie(selectedMovie);
+                movies = await (await fetch("/api/movies")).json();
+                drawMovies();
+                message.textContent = result.message;
+            } else {
+                await chooseMovie(selectedMovie);
+                message.textContent = result.message;
+                message.classList.add("error");
+            }
+        });
+
+        loadMovies().catch(function () {
+            message.textContent = "Could not connect to the booking server.";
+            message.classList.add("error");
+        });
+    </script>
+</body>
+</html>
