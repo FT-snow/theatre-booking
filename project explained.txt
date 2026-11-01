@@ -1,0 +1,17 @@
+REEL ROOM — THEATRE BOOKING
+
+WHAT THIS PROJECT DOES
+Reel Room is a small Java theatre-seat booking app. The built-in Java HTTP server serves the web page and booking API. MySQL stores accounts and reservations so a restart does not clear booked seats.
+
+SIGN-IN
+Users can sign in or create an account from the landing page. Passwords are stored as salted PBKDF2 hashes; the browser receives an HTTP-only session cookie. The theatre app has its own account tables. The local demo usernames provisioned for this app are prakhar and karan. Only password hashes are stored in the local database; no password is included in this public repository.
+
+SHARED SEATS
+All signed-in accounts read the same theatre_bookings table. A seat has one unique movie-and-seat key, so once one account books it, it appears as taken for every other account. Existing bookings remain visible after sign-in changes and server restarts.
+
+RUN LOCALLY
+1. Install Java 11 or newer and have MySQL running.
+2. From this folder, run ./run.sh. The script prompts privately for the MySQL password if DB_PASSWORD is not already set.
+3. The app creates the booking_app database tables on startup and serves Reel Room at http://localhost:8080.
+
+DB_USER and DB_URL can be set in the environment to use a different MySQL account or database. Do not commit database passwords or session credentials.

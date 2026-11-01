@@ -18,9 +18,11 @@ import java.util.concurrent.Executors;
 
 public class MovieBooking {
     private static BookingSystem bookingSystem = new BookingSystem();
+    private static AccountAuth auth = new AccountAuth("theatre_accounts", "theatre_sessions", "theatre_session");
 
     public static void main(String[] args) throws IOException, SQLException {
         bookingSystem.initialize();
+        auth.initialize();
 
         HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
         server.setExecutor(Executors.newFixedThreadPool(8));
@@ -36,18 +38,58 @@ public class MovieBooking {
 
             if (path.equals("/") && exchange.getRequestMethod().equals("GET")) {
                 send(exchange, 200, "text/html; charset=UTF-8", Files.readString(Path.of("index.html")));
-            } else if (path.equals("/api/movies") && exchange.getRequestMethod().equals("GET")) {
-                sendMovies(exchange);
-            } else if (path.equals("/api/seats") && exchange.getRequestMethod().equals("GET")) {
-                sendSeats(exchange);
-            } else if (path.equals("/api/book") && exchange.getRequestMethod().equals("POST")) {
-                bookSeat(exchange);
+            } else if (path.equals("/api/register") && exchange.getRequestMethod().equals("POST")) {
+                authenticate(exchange, true);
+            } else if (path.equals("/api/login") && exchange.getRequestMethod().equals("POST")) {
+                authenticate(exchange, false);
+            } else if (path.equals("/api/session") && exchange.getRequestMethod().equals("GET")) {
+                sendSession(exchange);
+            } else if (path.equals("/api/logout") && exchange.getRequestMethod().equals("POST")) {
+                auth.logout(exchange);
+                sendJson(exchange, 200, "{\"message\":\"Signed out\"}");
+            } else if (path.startsWith("/api/")) {
+                AccountAuth.User user = auth.currentUser(exchange);
+                if (user == null) {
+                    sendJson(exchange, 401, "{\"message\":\"Please sign in to continue.\"}");
+                } else if (path.equals("/api/movies") && exchange.getRequestMethod().equals("GET")) {
+                    sendMovies(exchange);
+                } else if (path.equals("/api/seats") && exchange.getRequestMethod().equals("GET")) {
+                    sendSeats(exchange);
+                } else if (path.equals("/api/book") && exchange.getRequestMethod().equals("POST")) {
+                    bookSeat(exchange, user);
+                } else {
+                    sendJson(exchange, 404, "{\"message\":\"Page not found\"}");
+                }
             } else {
                 sendJson(exchange, 404, "{\"message\":\"Page not found\"}");
             }
         } catch (SQLException e) {
             e.printStackTrace();
             sendJson(exchange, 500, "{\"message\":\"Database error. Check the MySQL settings.\"}");
+        }
+    }
+
+    private static void authenticate(HttpExchange exchange, boolean register) throws IOException, SQLException {
+        String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        Map<String, String> form = readForm(body);
+        try {
+            AccountAuth.Login login = register
+                    ? auth.register(form.get("username"), form.get("password"))
+                    : auth.login(form.get("username"), form.get("password"));
+            auth.setLoginCookie(exchange, login.token);
+            sendJson(exchange, register ? 201 : 200, "{\"authenticated\":true,\"username\":\""
+                    + login.user.username + "\"}");
+        } catch (AccountAuth.AuthException e) {
+            sendJson(exchange, e.status, "{\"message\":\"" + e.getMessage() + "\"}");
+        }
+    }
+
+    private static void sendSession(HttpExchange exchange) throws IOException, SQLException {
+        AccountAuth.User user = auth.currentUser(exchange);
+        if (user == null) {
+            sendJson(exchange, 200, "{\"authenticated\":false}");
+        } else {
+            sendJson(exchange, 200, "{\"authenticated\":true,\"username\":\"" + user.username + "\"}");
         }
     }
 
@@ -84,7 +126,7 @@ public class MovieBooking {
         sendJson(exchange, 200, movie.getSeatsJson());
     }
 
-    private static void bookSeat(HttpExchange exchange) throws IOException, SQLException {
+    private static void bookSeat(HttpExchange exchange, AccountAuth.User user) throws IOException, SQLException {
         String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         Map<String, String> form = readForm(body);
 
@@ -98,7 +140,7 @@ public class MovieBooking {
             return;
         }
 
-        if (movie.bookSeat(seatIndex, customerName.trim())) {
+        if (movie.bookSeat(seatIndex, customerName.trim(), user.id)) {
             sendJson(exchange, 200, "{\"message\":\"Seat " + form.get("seat") + " is booked. Enjoy the movie!\"}");
         } else {
             sendJson(exchange, 409, "{\"message\":\"Sorry, that seat was just booked by someone else\"}");
@@ -189,8 +231,16 @@ class BookingSystem {
 
             statement.executeUpdate("CREATE TABLE IF NOT EXISTS theatre_bookings ("
                     + "movie_id INT NOT NULL, seat_index INT NOT NULL, customer_name VARCHAR(100) NOT NULL, "
-                    + "booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (movie_id, seat_index), "
+                    + "account_id INT NULL, booked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (movie_id, seat_index), "
                     + "FOREIGN KEY (movie_id) REFERENCES theatre_movies(id))");
+
+            try {
+                statement.executeUpdate("ALTER TABLE theatre_bookings ADD COLUMN account_id INT NULL");
+            } catch (SQLException e) {
+                if (e.getErrorCode() != 1060) {
+                    throw e;
+                }
+            }
         }
     }
 
@@ -226,17 +276,18 @@ class Movie {
     String getTime() { return time; }
     int getTotalSeats() { return totalSeats; }
 
-    synchronized boolean bookSeat(int seatIndex, String customerName) throws SQLException {
+    synchronized boolean bookSeat(int seatIndex, String customerName, int accountId) throws SQLException {
         if (seatIndex < 0 || seatIndex >= totalSeats) {
             return false;
         }
 
         try (Connection connection = Database.getConnection();
              PreparedStatement insert = connection.prepareStatement(
-                     "INSERT INTO theatre_bookings (movie_id, seat_index, customer_name) VALUES (?, ?, ?)")) {
+                     "INSERT INTO theatre_bookings (movie_id, seat_index, customer_name, account_id) VALUES (?, ?, ?, ?)")) {
             insert.setInt(1, id);
             insert.setInt(2, seatIndex);
             insert.setString(3, customerName);
+            insert.setInt(4, accountId);
             insert.executeUpdate();
             return true;
         } catch (SQLException e) {
